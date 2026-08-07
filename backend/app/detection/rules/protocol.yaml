@@ -1,0 +1,62 @@
+# Anomalias de protocolo
+#
+# Nada aqui é exploração de aplicação — são requisições que um cliente HTTP normal
+# simplesmente não produz. Servem como sinal de apoio: sozinhas raramente fecham um
+# HIGH, mas somadas a outra categoria elevam a confiança.
+
+rules:
+  - id: PROTO-001
+    category: protocol
+    severity: high
+    score: 0.75
+    description: Linha de requisição malformada — o parser não achou verbo nem protocolo
+    targets: [method]
+    pattern: '^invalid$'
+
+  - id: PROTO-002
+    category: protocol
+    severity: medium
+    score: 0.65
+    description: Método HTTP de diagnóstico (TRACE, TRACK, DEBUG)
+    targets: [method]
+    pattern: '^(trace|track|debug|connect)$'
+
+  - id: PROTO-003
+    category: protocol
+    severity: medium
+    score: 0.6
+    description: Método WebDAV em servidor que não deveria expor WebDAV
+    targets: [method]
+    pattern: '^(propfind|proppatch|mkcol|copy|move|lock|unlock|search)$'
+
+  - id: PROTO-004
+    category: protocol
+    severity: high
+    score: 0.85
+    description: Injeção de CRLF no request — envenenamento de cabeçalho ou de cache
+    targets: [raw_path, raw_query]
+    pattern: '(%0d%0a|%0a%0d|\r\n|%23%0a|%0d|%0a)\s*(set-cookie|location|content-length|transfer-encoding|host|x-forwarded)'
+
+  - id: PROTO-005
+    category: protocol
+    severity: high
+    score: 0.8
+    description: Byte nulo na URI — truncamento de string em parser legado
+    targets: [raw_path, raw_query]
+    pattern: '(%00|\x00|%2500)'
+
+  - id: PROTO-006
+    category: protocol
+    severity: medium
+    score: 0.6
+    description: URI absoluta na linha de requisição — tentativa de usar o servidor como proxy
+    targets: [raw_path]
+    pattern: '^https?://'
+
+  - id: PROTO-007
+    category: protocol
+    severity: medium
+    score: 0.55
+    description: URI excepcionalmente longa
+    targets: [raw_path]
+    pattern: '^.{2000,}$'

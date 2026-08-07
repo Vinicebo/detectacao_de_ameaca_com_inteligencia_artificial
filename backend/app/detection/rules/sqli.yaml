@@ -1,0 +1,107 @@
+# SQL injection
+#
+# O texto já chega decodificado, sem byte de controle, com espaços colapsados e em
+# minúsculas (ver app/detection/normalize.py). Padrão nenhum precisa tratar
+# variação de caixa ou %20.
+#
+# Regra de ouro deste arquivo: **nunca casar palavra-chave isolada**. `select`,
+# `order`, `union` e `from` aparecem em query string legítima o tempo todo
+# (`?select=nome,preco`, `?order=data`). Todo padrão aqui exige a estrutura da
+# sintaxe SQL em volta, não só o vocabulário.
+
+rules:
+  - id: SQLI-001
+    category: sqli
+    severity: critical
+    score: 0.95
+    description: UNION SELECT — extração de dados de outra tabela
+    targets: [uri_decommented, user_agent, referer]
+    pattern: '\bunion\b(\s+all)?\s+select\b'
+
+  - id: SQLI-002
+    category: sqli
+    severity: critical
+    score: 0.9
+    description: Tautologia após aspa (' OR 1=1) — desvio de autenticação
+    targets: [uri_decommented]
+    pattern: '(''|%27|")\s*(or|and)\s+[''"]?[\w\s]{0,20}[''"]?\s*(=|<|>|like)\s*[''"]?[\w\s]{0,20}'
+
+  - id: SQLI-003
+    category: sqli
+    severity: high
+    score: 0.85
+    description: Comentário SQL logo após aspa — truncamento do resto da consulta
+    targets: [uri_decommented]
+    pattern: '(''|%27|")\s*(--|#|/\*)'
+
+  - id: SQLI-004
+    category: sqli
+    severity: critical
+    score: 0.95
+    description: Consulta empilhada (; seguido de comando DML/DDL)
+    targets: [uri_decommented]
+    pattern: ';\s*(select|insert|update|delete|drop|create|alter|truncate|exec|execute)\b'
+
+  - id: SQLI-005
+    category: sqli
+    severity: high
+    score: 0.9
+    description: Injeção cega por tempo (sleep, waitfor, benchmark)
+    targets: [uri_decommented, user_agent, referer]
+    pattern: '\b(sleep|pg_sleep|waitfor\s+delay|benchmark|dbms_pipe\.receive_message)\s*\('
+
+  - id: SQLI-006
+    category: sqli
+    severity: critical
+    score: 0.9
+    description: Leitura de metadados do banco (information_schema, sysobjects)
+    targets: [uri_decommented]
+    pattern: '\b(information_schema|sysobjects|syscolumns|sysdatabases|pg_catalog|pg_tables|all_tables)\b'
+
+  - id: SQLI-007
+    category: sqli
+    severity: critical
+    score: 0.95
+    description: Leitura ou escrita de arquivo pelo banco (load_file, into outfile)
+    targets: [uri_decommented]
+    pattern: '\b(load_file\s*\(|into\s+(out|dump)file|bulk\s+insert|opendatasource)'
+
+  - id: SQLI-008
+    category: sqli
+    severity: high
+    score: 0.85
+    description: SELECT ... FROM completo na URI
+    targets: [uri_decommented]
+    pattern: '\bselect\b.{1,200}?\bfrom\b\s+[\w`\[\.]'
+
+  - id: SQLI-009
+    category: sqli
+    severity: medium
+    score: 0.7
+    description: Comparação booleana constante (and 1=1, or 7=7)
+    targets: [uri_decommented]
+    pattern: '\b(and|or)\s+(\d{1,6})\s*=\s*\2\b'
+
+  - id: SQLI-010
+    category: sqli
+    severity: high
+    score: 0.8
+    description: Concatenação/conversão típica de injeção (char(), concat(), cast as)
+    targets: [uri_decommented]
+    pattern: '\b(char|chr|concat|concat_ws|group_concat|unhex|hex)\s*\(\s*\d+\s*(,|\))|\bcast\s*\(.{1,60}\bas\b'
+
+  - id: SQLI-011
+    category: sqli
+    severity: high
+    score: 0.85
+    description: Procedimento estendido do SQL Server (xp_cmdshell e afins)
+    targets: [uri_decommented]
+    pattern: '\b(xp_cmdshell|sp_executesql|sp_oacreate|xp_regread|openrowset)\b'
+
+  - id: SQLI-012
+    category: sqli
+    severity: medium
+    score: 0.75
+    description: Palavra-chave partida por comentário (uni/**/on) — evasão de filtro
+    targets: [raw_query, raw_path]
+    pattern: '\b(un|sel|ins|upd|del|dr)\w{0,3}/\*.*?\*/\w+'

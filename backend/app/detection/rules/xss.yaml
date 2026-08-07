@@ -1,0 +1,86 @@
+# Cross-site scripting
+#
+# Cuidado específico deste arquivo: **nada de `on\w+\s*=`**. Esse padrão, que
+# aparece em muito filtro caseiro, casa `?online=1`, `?once=true`, `?only=nome` —
+# query string perfeitamente comum. Os handlers são listados um a um.
+
+rules:
+  - id: XSS-001
+    category: xss
+    severity: critical
+    score: 0.95
+    description: Tag <script> injetada
+    targets: [uri, user_agent, referer]
+    pattern: '<\s*/?\s*script\b'
+
+  - id: XSS-002
+    category: xss
+    severity: high
+    score: 0.9
+    description: 'Pseudo-protocolo javascript: ou vbscript:'
+    targets: [uri, referer]
+    pattern: '\b(javascript|vbscript|livescript)\s*:'
+
+  - id: XSS-003
+    category: xss
+    severity: high
+    score: 0.9
+    description: Handler de evento inline (onerror, onload, ...)
+    targets: [uri, user_agent, referer]
+    pattern: '\bon(error|load|click|dblclick|mouseover|mouseout|mousemove|focus|blur|submit|change|keydown|keyup|keypress|toggle|animationstart|animationend|transitionend|pointerover|beforeprint|hashchange|scroll|wheel|drag|drop|copy|paste|cut)\s*='
+
+  - id: XSS-004
+    category: xss
+    severity: high
+    score: 0.85
+    description: Tag HTML capaz de executar script
+    targets: [uri, referer]
+    pattern: '<\s*(img|svg|iframe|object|embed|body|video|audio|source|details|marquee|form|input|link|meta|style|base|applet|frame|frameset)\b'
+
+  - id: XSS-005
+    category: xss
+    severity: high
+    score: 0.85
+    description: Acesso a document.cookie / window.location — roubo de sessão
+    targets: [uri, referer]
+    pattern: '\b(document\s*\.\s*(cookie|domain|write|location)|window\s*\.\s*(location|name|open)|location\s*\.\s*(href|replace))'
+
+  - id: XSS-006
+    category: xss
+    severity: medium
+    score: 0.75
+    description: Chamada a função de execução dinâmica (eval, atob, fromCharCode)
+    targets: [uri, referer]
+    pattern: '\b(eval|settimeout|setinterval|function|atob|btoa|fromcharcode|unescape|decodeuricomponent)\s*\('
+
+  - id: XSS-007
+    category: xss
+    severity: high
+    score: 0.85
+    description: 'URI data: com HTML ou script embutido'
+    targets: [uri, referer]
+    pattern: 'data\s*:\s*(text/html|application/(x-)?javascript|image/svg\+xml)'
+
+  - id: XSS-008
+    category: xss
+    severity: medium
+    score: 0.7
+    description: Caixa de diálogo típica de prova de conceito (alert/prompt/confirm)
+    targets: [uri, referer]
+    pattern: '\b(alert|prompt|confirm)\s*\(\s*[''"\d)]'
+
+  - id: XSS-009
+    category: xss
+    severity: high
+    score: 0.85
+    description: Expressão CSS ou @import usada para executar script
+    targets: [uri, referer]
+    pattern: '(expression\s*\(|@import\b|behaviou?r\s*:|-moz-binding\s*:)'
+
+  - id: XSS-010
+    category: xss
+    severity: medium
+    score: 0.75
+    description: Entidade HTML/JS codificada escondendo tag (&#x3c;script, <)
+    targets: [raw_query, raw_path]
+    pattern: '(&#x?0*3c;?|\\u003c|\\x3c)\s*0*(script|img|svg|iframe)'

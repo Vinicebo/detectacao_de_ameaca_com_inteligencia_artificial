@@ -1,0 +1,26 @@
+name: threat-detector-devlog
+
+# nginx de teste que escreve no mesmo volume que o `detector` lê.
+#
+#   docker compose -f dev-log/compose.yml up -d
+#   python dev-log/simulate.py mixed -n 100
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${DEVLOG_PORT:-8080}:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./html:/usr/share/nginx/html:ro
+      # Mesmo volume nomeado que o detector monta como somente leitura.
+      - nginx-logs:/var/log/nginx
+    restart: unless-stopped
+
+volumes:
+  nginx-logs:
+    # `external` porque o volume é criado pelo dev.compose.yml. Sem isto, o
+    # Compose criaria um segundo volume com prefixo deste projeto e o detector
+    # ficaria observando um arquivo que nunca recebe nada.
+    external: true
+    name: threat-detector-nginx-logs

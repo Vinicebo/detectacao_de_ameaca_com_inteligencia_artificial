@@ -1,0 +1,146 @@
+name: threat-detector
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-detector}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-detector}
+      POSTGRES_DB: ${POSTGRES_DB:-detector}
+    volumes:
+      # A partir do Postgres 18 a imagem quer o mount em /var/lib/postgresql, e
+      # coloca os dados num subdiretório por versão. Montar em .../data como nas
+      # versões antigas faz o container recusar a subir.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-detector} -d ${POSTGRES_DB:-detector}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    # appendonly mantém as janelas por IP e os contadores atravessando um restart.
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      args:
+        INSTALL_TRAIN: "true"   # o endpoint /models/retrain roda o treino em background
+        INSTALL_DEV: "true"     # só no compose de dev — `just test` roda dentro do container
+    command: ["api"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-detector}:${POSTGRES_PASSWORD:-detector}@postgres:5432/${POSTGRES_DB:-detector}
+      REDIS_URL: redis://redis:6379/0
+      # O MLflow tenta gravar o SHA do git a cada execução e, sem git na imagem,
+      # emite "All git commands will error until this is rectified" — alarmante e
+      # irrelevante, já que a versão do modelo é rastreada em `model_versions`.
+      GIT_PYTHON_REFRESH: quiet
+    ports:
+      # Exposta direta só para depuração (curl, /docs). Quem o navegador acessa é
+      # o frontend na 46969, que faz proxy de /api e /ws para cá — mesma origem,
+      # sem CORS e com o WebSocket funcionando.
+      - "${API_DEBUG_PORT:-46970}:8000"
+    volumes:
+      - models:/models
+      - mlruns:/mlruns
+      # Bind-mount de dev: editar código recarrega sem rebuild, e os testes rodam
+      # contra a árvore de trabalho. No compose de produção isto não existe.
+      - ./backend/app:/app/app
+      - ./backend/tests:/app/tests
+      - ./backend/pyproject.toml:/app/pyproject.toml
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  detector:
+    build:
+      context: ./backend
+      args:
+        INSTALL_TRAIN: "true"   # treina sozinho na primeira subida
+        INSTALL_DEV: "true"
+    command: ["detector"]
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-detector}:${POSTGRES_PASSWORD:-detector}@postgres:5432/${POSTGRES_DB:-detector}
+      REDIS_URL: redis://redis:6379/0
+      # O MLflow tenta gravar o SHA do git a cada execução e, sem git na imagem,
+      # emite "All git commands will error until this is rectified" — alarmante e
+      # irrelevante, já que a versão do modelo é rastreada em `model_versions`.
+      GIT_PYTHON_REFRESH: quiet
+      LOG_DIR: /var/log/nginx
+    volumes:
+      - models:/models
+      - mlruns:/mlruns
+      # Somente leitura: o detector observa os logs, nunca escreve neles.
+      - nginx-logs:/var/log/nginx:ro
+      - ./backend/app:/app/app
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      # Espera a API aplicar as migrações — só ela roda alembic.
+      api: {condition: service_started}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${DASHBOARD_PORT:-46969}:80"
+    depends_on:
+      api: {condition: service_started}
+    restart: unless-stopped
+
+  # A versão da imagem precisa acompanhar o cliente instalado no backend
+  # (`mlflow` no extra `train`). Servidor antigo com banco escrito por cliente
+  # novo falha na migração do alembic e entra em laço de restart.
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.15.1
+    command: >
+      mlflow server --host 0.0.0.0 --port 5000
+      --backend-store-uri sqlite:////mlruns/mlflow.db
+      --default-artifact-root /mlruns/artifacts
+    environment:
+      # O MLflow 3.x valida o header Host contra rebinding de DNS e só aceita
+      # localhost por padrão. Dentro da rede do compose o cliente chama
+      # `http://mlflow:5000`, e sem esta lista o servidor devolve 403 — que o
+      # nosso código engole como best-effort, deixando o rastreamento
+      # silenciosamente desligado.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:5000,localhost:5000,127.0.0.1:5000"
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlruns:/mlruns
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  models:
+  mlruns:
+  nginx-logs:
+    name: threat-detector-nginx-logs

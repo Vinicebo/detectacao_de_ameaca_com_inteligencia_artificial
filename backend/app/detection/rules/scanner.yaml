@@ -1,0 +1,62 @@
+# Varredura e reconhecimento
+#
+# Diferente das outras categorias: nada aqui é exploração, é preparação. Os
+# escores ficam de propósito na faixa MEDIUM — uma requisição isolada a
+# /wp-login.php não é ataque, e tratar como HIGH afogaria o analista em ruído.
+#
+# Quem transforma isso em HIGH é a combinação com as features de janela do
+# estágio 2: cem desses em sessenta segundos, vindos do mesmo IP, com 95% de 404.
+# Aí o ensemble pontua alto e o alerta se justifica.
+
+rules:
+  - id: SCAN-001
+    category: scanner
+    severity: high
+    score: 0.8
+    description: User-Agent de ferramenta de varredura ou exploração
+    targets: [user_agent]
+    pattern: '\b(sqlmap|nikto|nmap|masscan|zgrab|zmeu|nessus|acunetix|netsparker|appscan|burp(suite)?|dirbuster|dirsearch|gobuster|feroxbuster|ffuf|wfuzz|wpscan|joomscan|droopescan|hydra|medusa|metasploit|havij|w3af|arachni|openvas|qualys|whatweb|wafw00f|nuclei|xsstrike|commix|sslyze|testssl)\b'
+
+  - id: SCAN-002
+    category: scanner
+    severity: medium
+    score: 0.55
+    description: Cliente automatizado sem User-Agent de navegador
+    targets: [user_agent]
+    pattern: '^(python-requests|python-urllib|go-http-client|java/|libwww-perl|lwp::|okhttp|axios|got|node-fetch|guzzle|winhttp|apache-httpclient|scrapy|httpie|restsharp)'
+
+  - id: SCAN-003
+    category: scanner
+    severity: medium
+    score: 0.6
+    description: Sondagem de painel administrativo conhecido
+    targets: [path]
+    pattern: '^/(wp-admin|wp-login\.php|wp-content|wp-includes|xmlrpc\.php|administrator|admin\.php|phpmyadmin|pma|myadmin|adminer(\.php)?|cpanel|whm|plesk|webmin|manager/html|jmx-console|solr/admin)'
+
+  - id: SCAN-004
+    category: scanner
+    severity: high
+    score: 0.75
+    description: Sondagem de endpoint de gestão que costuma vazar segredo
+    targets: [path]
+    pattern: '^/(actuator(/|$)|_cat/|_cluster/|_search|console(/|$)|jolokia|metrics$|debug/pprof|server-status|server-info|\.well-known/security\.txt|swagger|graphql|graphiql)'
+
+  - id: SCAN-005
+    category: scanner
+    severity: high
+    score: 0.8
+    description: Sondagem de webshell conhecido
+    targets: [path]
+    pattern: '/(c99|r57|b374k|wso|shell|cmd|backdoor|webshell|alfa|indoxploit|marijuana|adminer)\.(php|asp|aspx|jsp)$'
+
+  - id: SCAN-006
+    category: scanner
+    severity: high
+    score: 0.8
+    description: Sondagem de caminho de exploração conhecida
+    targets: [path]
+    pattern: '/(vendor/phpunit|phpunit/src/util/php/eval-stdin\.php|cgi-bin/(luci|test-cgi|php)|struts|owa/auth|autodiscover/autodiscover\.xml|nice%20ports|hnap1|boaform|setup\.cgi|currentsetting\.htm)'
+
+# Nota: "requisição sem User-Agent" não vira regra aqui. O motor pula alvo vazio
+# (não dá para casar padrão contra campo ausente), então a regra nunca dispararia.
+# Esse sinal já é capturado pela feature `ua_is_empty` do estágio 2.

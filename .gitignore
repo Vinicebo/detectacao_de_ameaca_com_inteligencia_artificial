@@ -1,0 +1,43 @@
+# Documentação de terceiro mantida apenas como referência local.
+# Ver docs/referencia/LEIA-ME.md — não redistribuir.
+docs/referencia/README-original-terceiro.md
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Modelos e artefatos de ML
+models/
+mlruns/
+*.onnx
+*.pt
+*.pkl
+*.joblib
+
+# GeoIP
+data/geoip/*.mmdb
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Ambiente
+.env
+.env.local
+*.log
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

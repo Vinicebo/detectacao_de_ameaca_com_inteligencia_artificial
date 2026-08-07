@@ -1,0 +1,78 @@
+# Injeção de comando de sistema operacional
+#
+# O separador sozinho (`;`, `|`, `&`) não diz nada: `?filtro=a;b` e `?cor=preto|branco`
+# são query strings comuns. Todo padrão aqui exige separador **seguido de um
+# comando reconhecível**.
+
+rules:
+  # O `&` NÃO entra na classe de separadores, e o lookahead `(?!\s*=)` é
+  # obrigatório. Sem os dois, `?a=1&env=prod` — query string comuníssima — casaria
+  # como injeção de comando com escore 0.95, porque `env`, `id`, `ps`, `pwd`,
+  # `dir`, `cp`, `rm` e `export` são todos nomes de parâmetro corriqueiros. O
+  # encadeamento real por `&&` está na CMDI-006.
+  - id: CMDI-001
+    category: cmdi
+    severity: critical
+    score: 0.95
+    description: Separador de shell seguido de comando (; cat, | whoami)
+    targets: [uri, user_agent, referer]
+    pattern: '[;|`]\s*(cat|ls|dir|id|whoami|uname|hostname|pwd|ps|netstat|ifconfig|ipconfig|wget|curl|nc|ncat|telnet|bash|sh|zsh|ksh|python[23]?|perl|ruby|php|node|awk|sed|chmod|chown|kill|rm|mv|cp|touch|echo|printf|env|export|history|sudo|su)\b(?!\s*=)'
+
+  # `${var}` sozinho ficou de fora: frontend com template mal renderizado emite
+  # `/api/item/${id}` em produção, e isso não é injeção. Os lookups do Log4j, que
+  # são a variante que importa, estão em log4shell.yaml.
+  - id: CMDI-002
+    category: cmdi
+    severity: critical
+    score: 0.95
+    description: Substituição de comando ($(...) ou crase)
+    targets: [uri, user_agent, referer]
+    pattern: '\$\([^)]{1,200}\)|`[^`]{1,200}`'
+
+  - id: CMDI-003
+    category: cmdi
+    severity: critical
+    score: 0.95
+    description: Caminho de interpretador de shell
+    targets: [uri, user_agent, referer]
+    pattern: '(/bin/(ba|z|k|da)?sh|/usr/bin/(env|python|perl|ruby)|cmd(\.exe)?\s*/c|powershell(\.exe)?\s|wscript|cscript)'
+
+  - id: CMDI-004
+    category: cmdi
+    severity: critical
+    score: 0.95
+    description: Shell reverso (nc -e, bash -i >& /dev/tcp)
+    targets: [uri, user_agent, referer]
+    pattern: '(n(et)?c(at)?\s+(-\w*e|\S+\s+\d+\s*(-e|\|))|bash\s+-i|/dev/(tcp|udp)/|mkfifo\s|sh\s+-i)'
+
+  - id: CMDI-005
+    category: cmdi
+    severity: high
+    score: 0.85
+    description: Download e execução de payload (wget/curl com pipe para shell)
+    targets: [uri, user_agent, referer]
+    pattern: '(wget|curl)\s+[^\s|;]{0,200}\s*\|\s*(ba)?sh|\bchmod\s+[0-7]{3,4}\s|\bchmod\s+\+x\b'
+
+  - id: CMDI-006
+    category: cmdi
+    severity: high
+    score: 0.8
+    description: Encadeamento de comando por && ou || seguido de binário
+    targets: [uri]
+    pattern: '(&&|\|\|)\s*(cat|ls|id|whoami|uname|wget|curl|nc|bash|sh|python|rm|echo)\b'
+
+  - id: CMDI-007
+    category: cmdi
+    severity: high
+    score: 0.85
+    description: Comando codificado em base64 passado para o shell
+    targets: [uri, user_agent]
+    pattern: '(base64\s+(-d|--decode)|echo\s+[a-z0-9+/=]{20,}\s*\|\s*base64|-enc(odedcommand)?\s+[a-z0-9+/=]{20,})'
+
+  - id: CMDI-008
+    category: cmdi
+    severity: high
+    score: 0.85
+    description: Injeção de nova linha para separar comando (%0a comando)
+    targets: [raw_query, raw_path]
+    pattern: '%0a\s*(cat|ls|id|whoami|uname|wget|curl|nc|bash|sh|rm)\b'

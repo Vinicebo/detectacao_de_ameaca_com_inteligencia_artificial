@@ -1,0 +1,71 @@
+# Path traversal e leitura de arquivo sensível
+#
+# `../` aparece em query string legítima com alguma frequência (busca por texto,
+# caminho relativo em editor), então a sequência sozinha pontua abaixo do limiar
+# de HIGH. O que pontua alto é `../` **repetido** ou apontando para arquivo que só
+# interessa a quem está atacando.
+
+rules:
+  - id: TRAV-001
+    category: traversal
+    severity: high
+    score: 0.85
+    description: Sequência ../ repetida — subida de diretório
+    targets: [uri]
+    pattern: '(\.\.[/\\]){2,}'
+
+  - id: TRAV-002
+    category: traversal
+    severity: medium
+    score: 0.6
+    description: Sequência ../ isolada
+    targets: [uri]
+    pattern: '\.\.[/\\]'
+
+  - id: TRAV-003
+    category: traversal
+    severity: critical
+    score: 0.95
+    description: Leitura de arquivo de sistema Unix (/etc/passwd, /proc/self)
+    targets: [uri]
+    pattern: '/(etc/(passwd|shadow|group|hosts|hostname|issue|crontab)|proc/self/(environ|cmdline|maps)|root/\.\w+)'
+
+  - id: TRAV-004
+    category: traversal
+    severity: critical
+    score: 0.95
+    description: Leitura de arquivo de sistema Windows (win.ini, SAM)
+    targets: [uri]
+    pattern: '(boot\.ini|win\.ini|system32[/\\]+(config|drivers)|windows[/\\]+win\.ini|\\\\[\w.]+\\[a-z]\$)'
+
+  - id: TRAV-005
+    category: traversal
+    severity: critical
+    score: 0.9
+    description: Acesso a segredo de aplicação (.env, .git, chave SSH, credencial AWS)
+    targets: [uri]
+    pattern: '(/\.env(\.\w+)?$|/\.env[/?]|/\.git/|/\.svn/|/\.hg/|\.aws/credentials|\.ssh/(id_[a-z]+|authorized_keys)|/\.htpasswd|/\.npmrc|/\.dockercfg|/\.docker/config)'
+
+  - id: TRAV-006
+    category: traversal
+    severity: high
+    score: 0.85
+    description: Traversal codificado (%2e%2e, ..%2f) escapando de filtro ingênuo
+    targets: [raw_path, raw_query]
+    pattern: '(%2e){2}[/\\%]|\.\.%(2f|5c)|%252e%252e|%c0%ae|%uff0e'
+
+  - id: TRAV-007
+    category: traversal
+    severity: high
+    score: 0.85
+    description: 'Wrapper de protocolo para leitura de arquivo (file://, php://)'
+    targets: [uri]
+    pattern: '\b(file|php|zip|phar|expect|glob|data)\s*://'
+
+  - id: TRAV-008
+    category: traversal
+    severity: high
+    score: 0.8
+    description: Arquivo de configuração ou backup exposto
+    targets: [path]
+    pattern: '\.(bak|old|orig|save|swp|swo|tmp|temp|sql|dump|log|conf|config|ini|yml|yaml|pem|key|p12|pfx)$'

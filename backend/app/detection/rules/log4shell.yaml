@@ -1,0 +1,41 @@
+# Log4Shell (CVE-2021-44228) e injeção de JNDI em geral
+#
+# Este é o caso raro em que quase não há risco de falso positivo: `${jndi:` não
+# aparece em tráfego legítimo. Por isso os escores são os mais altos do conjunto.
+#
+# A parte que importa é o alvo: o payload do Log4Shell costuma vir em **cabeçalho**,
+# não na URI — User-Agent, Referer, X-Forwarded-For. O formato combined do nginx
+# registra User-Agent e Referer, e é onde olhamos.
+
+rules:
+  - id: L4J-001
+    category: log4shell
+    severity: critical
+    score: 1.0
+    description: 'Lookup JNDI literal (${jndi:...})'
+    targets: [uri, user_agent, referer, raw_query, raw_path]
+    pattern: '\$\{\s*jndi\s*:'
+
+  - id: L4J-002
+    category: log4shell
+    severity: critical
+    score: 1.0
+    description: 'JNDI ofuscado com lookups aninhados (${${lower:j}ndi:)'
+    targets: [uri, user_agent, referer, raw_query, raw_path]
+    pattern: '\$\{[^}]{0,60}\$\{[^}]{0,60}(lower|upper|env|sys|date|ctx|base64|main)[^}]{0,60}'
+
+  - id: L4J-003
+    category: log4shell
+    severity: critical
+    score: 0.95
+    description: Protocolo de resolução remota usado pelo JNDI (ldap, rmi, dns)
+    targets: [uri, user_agent, referer]
+    pattern: '\b(ldaps?|rmi|iiop|corba|nis|nds|dns)\s*:\s*/\s*/'
+
+  - id: L4J-004
+    category: log4shell
+    severity: high
+    score: 0.85
+    description: 'Lookup do Log4j exfiltrando ambiente (${env:}, ${sys:})'
+    targets: [uri, user_agent, referer]
+    pattern: '\$\{\s*(env|sys|java|main|ctx|lower|upper|date|base64)\s*:'
