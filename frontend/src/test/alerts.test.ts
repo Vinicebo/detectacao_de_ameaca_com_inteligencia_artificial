@@ -17,9 +17,10 @@ class FakeWebSocket {
   static readonly OPEN = 1;
 
   readyState = 0;
+  binaryType = 'blob';
   sent: string[] = [];
   onopen: (() => void) | null = null;
-  onmessage: ((event: MessageEvent<string>) => void) | null = null;
+  onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
   onerror: (() => void) | null = null;
   onclose: ((event: CloseEvent) => void) | null = null;
 
@@ -42,6 +43,12 @@ class FakeWebSocket {
 
   emit(type: string, data: unknown): void {
     this.onmessage?.({ data: JSON.stringify({ type, data }) } as MessageEvent<string>);
+  }
+
+  /** O servidor real envia frames binários (`send_bytes`), não texto. */
+  emitBinary(type: string, data: unknown): void {
+    const bytes = new TextEncoder().encode(JSON.stringify({ type, data }));
+    this.onmessage?.({ data: bytes.buffer } as MessageEvent<ArrayBuffer>);
   }
 }
 
@@ -103,6 +110,21 @@ describe('store de alertas', () => {
 
     socket.emit('auth_ok', { heartbeat_seconds: 30 });
     expect(useAlertStore.getState().connection).toBe('live');
+  });
+
+  it('entende frames binários, que é como o servidor realmente envia', () => {
+    // Regressão: sem `binaryType = 'arraybuffer'` o navegador entrega um Blob, o
+    // JSON.parse falha em silêncio e o feed fica preso em "autenticando".
+    useAlertStore.getState().connect();
+    const socket = FakeWebSocket.instances[0]!;
+    expect(socket.binaryType).toBe('arraybuffer');
+
+    socket.open();
+    socket.emitBinary('auth_ok', { heartbeat_seconds: 30 });
+    expect(useAlertStore.getState().connection).toBe('live');
+
+    socket.emitBinary('alert', makeAlert({ id: 7, path: '/binario' }));
+    expect(useAlertStore.getState().alerts[0]?.path).toBe('/binario');
   });
 
   it('marca falha e não reconecta quando a chave é rejeitada', () => {

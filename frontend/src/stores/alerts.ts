@@ -46,6 +46,21 @@ function socketUrl(): string {
   return `${protocol}//${window.location.host}/ws/alerts`;
 }
 
+/**
+ * O servidor envia os frames em binário (`send_bytes`). Sem `binaryType`, o
+ * navegador entrega um `Blob`, que `JSON.parse` não lê — a mensagem seria
+ * descartada em silêncio e o feed ficaria preso em "autenticando". Aceitamos os
+ * dois formatos para não depender de como o servidor serializa.
+ */
+function decodeFrame(data: unknown): string | null {
+  if (typeof data === 'string') return data;
+  // `toString` em vez de `instanceof`: não depende de qual realm criou o buffer.
+  if (Object.prototype.toString.call(data) === '[object ArrayBuffer]') {
+    return new TextDecoder().decode(data as ArrayBuffer);
+  }
+  return null;
+}
+
 function reconnectDelay(): number {
   // 1s, 2s, 4s, 8s… até o teto. O jitter evita que várias abas reconectem no
   // mesmo instante e batam todas juntas na API que acabou de subir.
@@ -74,16 +89,20 @@ export const useAlertStore = create<AlertState>((set, get) => ({
     set({ connection: 'connecting', lastError: null });
 
     socket = new WebSocket(socketUrl());
+    socket.binaryType = 'arraybuffer';
 
     socket.onopen = () => {
       set({ connection: 'authenticating' });
       socket?.send(JSON.stringify({ type: 'auth', api_key: key }));
     };
 
-    socket.onmessage = (event: MessageEvent<string>) => {
+    socket.onmessage = (event: MessageEvent<unknown>) => {
+      const text = decodeFrame(event.data);
+      if (text === null) return;
+
       let message: { type: string; data: unknown };
       try {
-        message = JSON.parse(event.data) as { type: string; data: unknown };
+        message = JSON.parse(text) as { type: string; data: unknown };
       } catch {
         return;
       }
