@@ -25,7 +25,7 @@ jobs:
           POSTGRES_DB: detector_test
         ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U detector"
+          --health-cmd "pg_isready -U detector -d detector_test"
           --health-interval 5s --health-timeout 3s --health-retries 12
       redis:
         image: redis:7.4-alpine
@@ -61,6 +61,11 @@ jobs:
 
       - name: Tipos
         run: uv run mypy app
+
+      - name: Migrações
+        # Os testes de API leem tabelas que só existem após o alembic. Na stack
+        # local quem roda isto é o entrypoint da api; na CI precisa ser explícito.
+        run: uv run alembic upgrade head
 
       - name: Testes
         run: uv run pytest --cov=app --cov-report=term-missing
