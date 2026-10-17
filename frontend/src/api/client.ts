@@ -43,6 +43,19 @@ export function clearApiKey(): void {
   sessionStorage.removeItem(KEY_STORAGE);
 }
 
+/** Disparado quando a API ou o WebSocket recusam a chave guardada. */
+export const API_KEY_REJECTED_EVENT = 'api-key-rejected';
+
+/**
+ * A chave foi recusada: descarta e avisa o app, que volta para a tela de login.
+ * Sem isto, uma chave errada ficava guardada na aba e o usuário não tinha como
+ * corrigi-la sem fechar a aba.
+ */
+export function rejectApiKey(): void {
+  clearApiKey();
+  window.dispatchEvent(new Event(API_KEY_REJECTED_EVENT));
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const key = getApiKey();
   const headers = new Headers(init.headers);
@@ -53,6 +66,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
 
   if (!response.ok) {
+    if (response.status === 401) rejectApiKey();
+
     let detail = response.statusText;
     try {
       const body = (await response.json()) as { detail?: string };

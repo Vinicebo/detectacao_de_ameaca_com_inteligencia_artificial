@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Route, Routes } from 'react-router-dom';
 
-import { getApiKey, setApiKey } from './api/client';
+import { API_KEY_REJECTED_EVENT, getApiKey, setApiKey } from './api/client';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { LiveFeed } from './pages/LiveFeed';
 import { Models } from './pages/Models';
@@ -10,7 +10,13 @@ import { Threats } from './pages/Threats';
 import { useAlertStore } from './stores/alerts';
 
 /** Pede a API key antes de qualquer coisa — sem ela nenhuma rota responde. */
-function ApiKeyGate({ onSubmit }: { onSubmit: (key: string) => void }) {
+function ApiKeyGate({
+  onSubmit,
+  rejected,
+}: {
+  onSubmit: (key: string) => void;
+  rejected: boolean;
+}) {
   const [value, setValue] = useState('');
 
   return (
@@ -18,6 +24,11 @@ function ApiKeyGate({ onSubmit }: { onSubmit: (key: string) => void }) {
       <h1>
         Detector de <span style={{ color: 'var(--high)' }}>Ameaças</span>
       </h1>
+      {rejected && (
+        <div className="error-banner" role="alert">
+          API key recusada. Confira o valor de <code>API_KEY</code> no <code>.env</code>.
+        </div>
+      )}
       <p>
         Informe a API key configurada em <code>API_KEY</code> no <code>.env</code>. Ela fica
         guardada apenas nesta aba e é descartada ao fechá-la.
@@ -46,8 +57,20 @@ function ApiKeyGate({ onSubmit }: { onSubmit: (key: string) => void }) {
 
 export function App() {
   const [authenticated, setAuthenticated] = useState(() => getApiKey() !== null);
+  const [rejected, setRejected] = useState(false);
   const connect = useAlertStore((state) => state.connect);
   const disconnect = useAlertStore((state) => state.disconnect);
+
+  useEffect(() => {
+    // A API ou o WebSocket recusaram a chave: ela já foi descartada, então basta
+    // voltar para o login, onde o usuário digita a correta.
+    const onRejected = () => {
+      setRejected(true);
+      setAuthenticated(false);
+    };
+    window.addEventListener(API_KEY_REJECTED_EVENT, onRejected);
+    return () => window.removeEventListener(API_KEY_REJECTED_EVENT, onRejected);
+  }, []);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -60,8 +83,10 @@ export function App() {
   if (!authenticated) {
     return (
       <ApiKeyGate
+        rejected={rejected}
         onSubmit={(key) => {
           setApiKey(key);
+          setRejected(false);
           setAuthenticated(true);
         }}
       />
