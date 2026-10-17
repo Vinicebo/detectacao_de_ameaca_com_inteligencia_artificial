@@ -32,6 +32,14 @@ MARKER_IP_PREFIX = "192.0.2."  # TEST-NET-1, reservado para documentação
 # semeadas — foi assim que este teste passou a falhar depois da primeira simulação.
 SEED_ANCHOR = datetime.now(UTC) - timedelta(days=10)
 
+# Consultas que filtram por severidade, categoria ou escore precisam do mesmo
+# recorte: com centenas de eventos HIGH recentes no banco de dev, os três semeados
+# ficam além da primeira página e o teste falha sem o código ter mudado.
+SEED_WINDOW = {
+    "since": (SEED_ANCHOR - timedelta(hours=1)).isoformat(),
+    "until": (SEED_ANCHOR + timedelta(seconds=1)).isoformat(),
+}
+
 
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
@@ -118,10 +126,11 @@ async def test_health_needs_no_auth(client: AsyncClient) -> None:
 async def test_list_returns_newest_first(
     client: AsyncClient, auth: dict[str, str], seeded: list[int]
 ) -> None:
-    response = await client.get("/threats", params={"limit": 50}, headers=auth)
+    response = await client.get("/threats", params={"limit": 50, **SEED_WINDOW}, headers=auth)
     assert response.status_code == 200
 
     items = [i for i in response.json()["items"] if i["remote_addr"].startswith(MARKER_IP_PREFIX)]
+    assert len(items) > 1, "sem itens o teste de ordenação passaria sem verificar nada"
     timestamps = [i["ts"] for i in items]
     assert timestamps == sorted(timestamps, reverse=True)
 
@@ -129,7 +138,9 @@ async def test_list_returns_newest_first(
 async def test_filter_by_severity(
     client: AsyncClient, auth: dict[str, str], seeded: list[int]
 ) -> None:
-    response = await client.get("/threats", params={"severity": "HIGH", "limit": 100}, headers=auth)
+    response = await client.get(
+        "/threats", params={"severity": "HIGH", "limit": 100, **SEED_WINDOW}, headers=auth
+    )
     items = [i for i in response.json()["items"] if i["remote_addr"].startswith(MARKER_IP_PREFIX)]
     assert len(items) == 3
     assert all(i["severity"] == "HIGH" for i in items)
@@ -138,7 +149,9 @@ async def test_filter_by_severity(
 async def test_filter_by_category_uses_array_containment(
     client: AsyncClient, auth: dict[str, str], seeded: list[int]
 ) -> None:
-    response = await client.get("/threats", params={"category": "sqli", "limit": 100}, headers=auth)
+    response = await client.get(
+        "/threats", params={"category": "sqli", "limit": 100, **SEED_WINDOW}, headers=auth
+    )
     items = [i for i in response.json()["items"] if i["remote_addr"].startswith(MARKER_IP_PREFIX)]
     assert len(items) == 2
     assert all("sqli" in i["categories"] for i in items)
@@ -158,7 +171,9 @@ async def test_filter_by_remote_addr(
 async def test_min_score_filter(
     client: AsyncClient, auth: dict[str, str], seeded: list[int]
 ) -> None:
-    response = await client.get("/threats", params={"min_score": 0.9, "limit": 100}, headers=auth)
+    response = await client.get(
+        "/threats", params={"min_score": 0.9, "limit": 100, **SEED_WINDOW}, headers=auth
+    )
     items = [i for i in response.json()["items"] if i["remote_addr"].startswith(MARKER_IP_PREFIX)]
     assert all(i["threat_score"] >= 0.9 for i in items)
     assert len(items) == 3
@@ -175,16 +190,11 @@ async def test_cursor_pagination_covers_everything_once(
     """Sem pular nem repetir — a razão de usar cursor em vez de OFFSET."""
     # Janela restrita às linhas semeadas: o banco de dev também tem tráfego do
     # simulador, e sem o recorte a paginação caminharia a tabela inteira.
-    window = {
-        "since": (SEED_ANCHOR - timedelta(hours=1)).isoformat(),
-        "until": (SEED_ANCHOR + timedelta(seconds=1)).isoformat(),
-    }
-
     seen: list[int] = []
     cursor: str | None = None
 
     for _ in range(20):  # trava de segurança contra laço infinito
-        params: dict[str, object] = {"limit": 3, **window}
+        params: dict[str, object] = {"limit": 3, **SEED_WINDOW}
         if cursor:
             params["cursor"] = cursor
         payload = (await client.get("/threats", params=params, headers=auth)).json()
@@ -208,11 +218,7 @@ async def test_last_page_has_no_cursor(
 ) -> None:
     response = await client.get(
         "/threats",
-        params={
-            "limit": 200,
-            "since": (SEED_ANCHOR - timedelta(hours=1)).isoformat(),
-            "until": (SEED_ANCHOR + timedelta(seconds=1)).isoformat(),
-        },
+        params={"limit": 200, **SEED_WINDOW},
         headers=auth,
     )
     assert response.status_code == 200
