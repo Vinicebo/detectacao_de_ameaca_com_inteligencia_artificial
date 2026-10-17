@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { clearApiKey, setApiKey } from '../api/client';
+import { clearApiKey, getApiKey, setApiKey } from '../api/client';
 import type { Alert } from '../api/types';
 import { __resetSocketState, useAlertStore } from '../stores/alerts';
 
@@ -135,6 +135,8 @@ describe('store de alertas', () => {
     socket.emit('auth_error', { message: 'API key inválida' });
 
     expect(useAlertStore.getState().connection).toBe('failed');
+    // A chave recusada é descartada, para o app poder pedir outra.
+    expect(getApiKey()).toBeNull();
 
     socket.onclose?.({ code: 4003, reason: 'não autorizado' } as CloseEvent);
     expect(useAlertStore.getState().connection).toBe('failed');

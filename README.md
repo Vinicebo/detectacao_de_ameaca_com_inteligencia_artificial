@@ -200,8 +200,8 @@ Números verificados na última execução:
 | Verificação | Resultado |
 |---|---|
 | Backend: pytest (dentro do container) | **222 testes passando** |
-| Frontend: Vitest | **10 testes passando** |
-| **Total** | **232 testes automatizados** |
+| Frontend: Vitest | **13 testes passando** |
+| **Total** | **235 testes automatizados** |
 | Backend: ruff (lint e formatação) | sem problemas |
 | Backend: mypy | sem problemas em 47 arquivos |
 | Frontend: lint, typecheck e build | sem problemas |

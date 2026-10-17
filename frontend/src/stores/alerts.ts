@@ -17,7 +17,7 @@
  */
 
 import { create } from 'zustand';
-import { getApiKey } from '../api/client';
+import { getApiKey, rejectApiKey } from '../api/client';
 import type { Alert } from '../api/types';
 
 const MAX_BUFFERED_ALERTS = 500;
@@ -119,6 +119,7 @@ export const useAlertStore = create<AlertState>((set, get) => ({
             lastError: (message.data as { message?: string })?.message ?? 'falha na autenticação',
           });
           intentionallyClosed = true; // chave errada não melhora com retentativa
+          rejectApiKey(); // descarta a chave e volta para o login
           break;
 
         case 'snapshot': {
